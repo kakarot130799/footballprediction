@@ -49,7 +49,7 @@ end
 # ╔═╡ df395f58-89ae-488c-bdcc-eb39ee4b8cbe
 @model function team_model(X, y, ::Type{T} = Float64) where {T}
 	# Priors
-	β₀ ~ Normal(0, 10)
+	#β₀ ~ Normal(0, 10)
 	poss ~ Normal(0, 10)
 	sh ~ Normal(0, 10)
 	sot ~ Normal(0, 10)
@@ -63,7 +63,7 @@ end
 	θ ~ truncated(Normal(1, 10); lower=0)
 	σ ~ InverseGamma(α, θ)
 
-	μ = β₀ .+ poss .* X.poss .+ sh .* X.sh .+ sot .* X.sot .+ dist .* X.dist .+ fk .* X.fk .+ pk .* X.pk .+ venue_code .* X.venue_code .+ opp_code .* X.opp_code
+	μ = poss .* X.poss .+ sh .* X.sh .+ sot .* X.sot .+ dist .* X.dist .+ fk .* X.fk .+ pk .* X.pk .+ venue_code .* X.venue_code .+ opp_code .* X.opp_code
 
 	y ~ MvNormal(μ, σ * I)
 	return Nothing
@@ -105,17 +105,17 @@ plot(mc_chain)
 # ╔═╡ 71004ab9-69f1-43c2-a405-ced51b2a38c6
 function prediction(X, chain)
 	params = DataFrame(mean(chain))[:, 2]
-    intercept = params[1]
-    poss = params[2]
-    sh = params[3]
-    sot = params[4]
-	dist = params[5]
-	fk = params[6]
-	pk = params[7]
-	venue_code = params[8]
-	opp_code = params[9]
+    #intercept = params[1]
+    poss = params[1]
+    sh = params[2]
+    sot = params[3]
+	dist = params[4]
+	fk = params[5]
+	pk = params[6]
+	venue_code = params[7]
+	opp_code = params[8]
 
-	goals = abs.(round.(intercept .+ poss .* X.poss .+ sh .* X.sh .+ sot .* X.sot .+ dist .* X.dist .+ fk .* X.fk .+ pk .* X.pk .+ venue_code .* X.venue_code .+ opp_code .* X.opp_code))
+	goals = abs.(round.(poss .* X.poss .+ sh .* X.sh .+ sot .* X.sot .+ dist .* X.dist .+ fk .* X.fk .+ pk .* X.pk .+ venue_code .* X.venue_code .+ opp_code .* X.opp_code))
 
     return goals
 end;
@@ -151,50 +151,80 @@ struct team_preds
 	error_rate::Float64
 end
 
-# ╔═╡ 7e979950-6179-444b-9ff7-8623a7bb022a
-for t in unique(cl_2021.team)[1:20]
-	println(t)
-end
-
-# ╔═╡ a20f7282-6bd3-48e6-8653-309f360c84ed
-cl_2021[cl_2021.team .== "Crystal Palace", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
-
 # ╔═╡ 63a44af5-ac89-42a4-bad1-f8258154240d
-function full_team_analysis(league; n=1, sample_size=1_000, num_chains=4)
+function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_chains=4)
 	p_league = []
 	#plot(xlabel="Game", ylabel="Error")
 	for t in unique(league.team)[1:n]
-		X = league[league.team .== t, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
-		y = league[league.team .== t, :gf]
-		team_m = team_model(X, y)
-		team_chain = sample(
-			team_m,
-			NUTS(),
-			MCMCThreads(), 
-			sample_size,
-			num_chains;
-			discard_adapt=false
-		);
-		team_pred = prediction(X, team_chain)
-		error = abs.(y .- team_pred)
-		error_rate = mean(error)
-		t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
-		push!(p_league, t_model)
-		println(t)
-		#plot!(1:38, error, label=t)
+		if t in league_pred.team
+			X = league[league.team .== t, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
+			y = league[league.team .== t, :gf]
+			X_pred = league_pred[league_pred.team .== t, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
+			y_pred = league_pred[league_pred.team .== t, :gf]
+			
+			team_m = team_model(X, y)
+			team_chain = sample(
+				team_m,
+				NUTS(),
+				MCMCThreads(), 
+				sample_size,
+				num_chains;
+				discard_adapt=false
+			);
+			team_pred = prediction(X_pred, team_chain)
+			error = abs.(y_pred .- team_pred)
+			error_rate = mean(error)
+			t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
+			push!(p_league, t_model)
+			println(t)
+			#plot!(1:38, error, label=t)
+		end
 	end
 	#plot!(title="Analysis")
 	return p_league
 end
 
 # ╔═╡ 65e99aca-ae3d-4616-bacd-b656a4eb0ab3
-fta = full_team_analysis(cl_2021; n=20)
+fta = full_team_analysis(cl_2021, cl_2021; n=20)
 
 # ╔═╡ b4a473af-3c30-4423-9a58-439dcf9e48a0
-plot(fta[1:20].team, fta[1:20].error_rate)
+bar([fta[i].team for i in 1:20], [fta[i].error_rate for i in 1:20], xlabel = "Team", ylabel = "MAE", title = "Comparision of MAE over Teams", xtickfontsize=4, legend=false)
+
+# ╔═╡ adc1cd2a-ebf7-4e5a-9810-0535b69d7aff
+cl_2021.gf_pred = vcat([fta[i].predictions for i in 1:20]...);
+
+# ╔═╡ 029905d0-6144-4835-ad53-631db7729f00
+cl_2021[:, [:team, :opponent, :gf, :gf_pred]]
+
+# ╔═╡ cd679dd8-0714-4997-ad3c-c2c22023857d
+mean(abs.(cl_2021.gf - cl_2021.gf_pred))
+
+# ╔═╡ bd77158f-0787-4ef9-a3db-c46c439ab662
+
+
+# ╔═╡ 932cf027-8643-4e58-8c96-e6511ca0c707
+begin
+	println(fta[10].team)
+	DataFrame(summarystats(fta[10].samples))
+end
+
+# ╔═╡ ff908963-5487-4540-a2ac-3074a1a80c6c
+bar([fta[i].team for i in 1:5], [DataFrame(summarystats(fta[i].samples))[8, 2] for i in 1:5], xlabel = "Team", ylabel = "Home Field Advantage", title = "Comparision of Home Field Advantage over Teams", xtickfontsize=5, legend=false)
+
+# ╔═╡ cd8d3c3f-f457-43f8-aa1e-affdea6573ed
+DataFrame(fta[10].samples[:, 2])
+
+# ╔═╡ 1d767919-9d69-4841-94cd-f5bd330e1293
+fta[10].samples[:, :poss, 1]
+
+# ╔═╡ 7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
+histogram(fta[10].prediction)
 
 # ╔═╡ a04bbb71-107b-414b-a932-6faa2f9aa213
-fta[:].team
+_, _ = fta[1:2]
+
+# ╔═╡ 8c1be8e5-426f-4c70-9ecd-05a972ccabca
+[fta[i].error_rate for i in 1:20]
 
 # ╔═╡ d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
 spurs_model = team_model(
@@ -2459,12 +2489,20 @@ version = "1.4.1+0"
 # ╠═d38400aa-95f2-460c-9282-c31e5084cb09
 # ╠═0243ec16-ce9f-413b-97e7-6450f2b4f0aa
 # ╠═f8ec06bf-cb3e-4e38-8cec-9b1946b1eda3
-# ╠═7e979950-6179-444b-9ff7-8623a7bb022a
-# ╠═a20f7282-6bd3-48e6-8653-309f360c84ed
 # ╠═63a44af5-ac89-42a4-bad1-f8258154240d
 # ╠═65e99aca-ae3d-4616-bacd-b656a4eb0ab3
 # ╠═b4a473af-3c30-4423-9a58-439dcf9e48a0
+# ╠═adc1cd2a-ebf7-4e5a-9810-0535b69d7aff
+# ╠═029905d0-6144-4835-ad53-631db7729f00
+# ╠═cd679dd8-0714-4997-ad3c-c2c22023857d
+# ╠═bd77158f-0787-4ef9-a3db-c46c439ab662
+# ╠═932cf027-8643-4e58-8c96-e6511ca0c707
+# ╠═ff908963-5487-4540-a2ac-3074a1a80c6c
+# ╠═cd8d3c3f-f457-43f8-aa1e-affdea6573ed
+# ╠═1d767919-9d69-4841-94cd-f5bd330e1293
+# ╠═7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
 # ╠═a04bbb71-107b-414b-a932-6faa2f9aa213
+# ╠═8c1be8e5-426f-4c70-9ecd-05a972ccabca
 # ╠═d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
 # ╠═27077efc-fac2-46cc-ae26-0f611eeacb76
 # ╠═0a2e7041-7b64-40ed-90a5-d9d57d0d06d5
