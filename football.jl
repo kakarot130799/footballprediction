@@ -29,55 +29,48 @@ data = DataFrame(CSV.File("data/cleaned_data.csv"))
 data.round = parse.(Int, replace.(data.round, "Matchweek " => ""));
 
 # ╔═╡ 642aecab-6434-471e-bb18-85caa3fbb2ff
-
+unique(data.season)
 
 # ╔═╡ 75758599-28e0-4fec-ab9f-7831cc89f59e
-begin
-	cl_2021 = data[data.season .== 2021, [:round, :gf, :ga, :team, :opponent, :poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
-	cl_2022 = data[data.season .== 2022, [:round, :gf, :ga, :team, :opponent, :poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
-end
-
-# ╔═╡ 1d95bba3-4a39-4848-bd69-6bbf383f80b4
-begin
-	grp_2021 = groupby(cl_2021, [:team])
-	grp_2022 = groupby(cl_2022, [:team])
-end
-
-# ╔═╡ d1dd55ef-959a-4bc3-9da0-59059cfe1bae
-grp_2021.keymap
-
-# ╔═╡ 066861d0-637f-4b44-b1c5-9eb0bb038275
-grp_2022.keymap
+cl = dropmissing(data[:, [:season, :round, :gf, :ga, :team, :opponent, :poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :home_code, :opp_code]])
 
 # ╔═╡ cf3b2f08-f561-4374-90f0-b6fbfc52c9d7
 begin
 	plot(xlabel="Match", ylabel="Goals", title="Goals p/Match:\n Manchester City")
-	scatter!(grp_2021[1].round, grp_2021[1].gf, label="2021")
-	scatter!(grp_2022[1].round, grp_2022[1].gf, label="2022")
+	scatter!(cl[cl.team .== "Manchester City", :].round, cl[cl.team .== "Manchester City", :].gf, label=false)
 end
 
-# ╔═╡ 875c9430-46e3-445a-963f-8fcf33fd184e
-grp_2021[1]
-
-# ╔═╡ 5ddb0661-a66a-4c6c-961a-9d1e710b914a
-#man_city_model = turing_model(@formula(gf ~ poss + sh + sot + dist + fk + pk + venue_code + opp_code), grp_2021[1]; model=Normal)
+# ╔═╡ b93b8781-fb9f-467b-9bd7-362cc7a54657
+begin
+	cl_2021 = filter(:season => (s) -> s .== 2021, cl)
+	cl_2022 = filter(:season => (s) -> s .== 2022, cl)
+end
 
 # ╔═╡ df395f58-89ae-488c-bdcc-eb39ee4b8cbe
-## manual method
 @model function team_model(X, y, ::Type{T} = Float64) where {T}
 	# Priors
 	β₀ ~ Normal(0, 10)
-	β ~ MvNormal(zeros(8), 10 * I)
+	poss ~ Normal(0, 10)
+	sh ~ Normal(0, 10)
+	sot ~ Normal(0, 10)
+	dist ~ Normal(0, 10)
+	fk ~ Normal(0, 10)
+	pk ~ Normal(0, 10)
+	venue_code ~ Normal(0, 10)
+	opp_code ~ Normal(0, 10)
 
 	α ~ truncated(Normal(1, 10); lower=0)
 	θ ~ truncated(Normal(1, 10); lower=0)
 	σ ~ InverseGamma(α, θ)
 
-	μ = β₀ .+ Matrix{Float64}(X) * β
+	μ = β₀ .+ poss .* X.poss .+ sh .* X.sh .+ sot .* X.sot .+ dist .* X.dist .+ fk .* X.fk .+ pk .* X.pk .+ venue_code .* X.venue_code .+ opp_code .* X.opp_code
 
 	y ~ MvNormal(μ, σ * I)
 	return Nothing
 end
+
+# ╔═╡ 29b35fc4-05d7-4eb1-b5bd-0bb40f1cf29e
+
 
 # ╔═╡ 408ce1f5-85d5-4f9f-976d-2c16e90dc7c3
 begin
@@ -86,7 +79,9 @@ begin
 end
 
 # ╔═╡ e415972d-5c83-4802-825c-23ffd19780f0
-man_city_model = team_model(grp_2021[1][:, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], grp_2021[1][:, :gf])
+man_city_model = team_model(
+	cl_2021[cl_2021.team .== "Manchester City", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], cl_2021[cl_2021.team .== "Manchester City", :gf]
+)
 
 # ╔═╡ dd807b63-7b55-4b2e-a567-7bee5b0a3b70
 mc_chain = sample(
@@ -126,44 +121,85 @@ function prediction(X, chain)
 end;
 
 # ╔═╡ 2ef28771-077d-4d1c-b922-7012ece82934
-grp_2021[1].Predicted_Goals = prediction(grp_2021[1][:, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
+man_city_pg_goals = prediction(cl_2021[cl_2021.team .== "Manchester City", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
 
 # ╔═╡ 8c190978-b505-44f0-9dda-b91b3e1f57e5
 begin
 	plot(xlabel="Match", ylabel="Goals", title="Goals p/Match:\n Manchester City")
-	scatter!(1:38, grp_2021[1].gf, label="2021 Actual")
-	scatter!(1:38, grp_2021[1].Predicted_Goals, label="2021 Predicted")
+	scatter!(cl_2021[cl_2021.team .== "Manchester City", :].round, cl_2021[cl_2021.team .== "Manchester City", :].gf, label="2021 Actual")
+	scatter!(1:38, man_city_pg_goals, label="2021 Predicted")
 end
 
 # ╔═╡ d38400aa-95f2-460c-9282-c31e5084cb09
 begin
-	plot(xlabel="Match", ylabel="Goals", title="Prediction Error of Goals p/Match:\n Manchester City")
-	plot!(1:38, (grp_2021[1].gf - grp_2021[1].Predicted_Goals), width=2)
+	plot(xlabel="Match", ylabel="Absolute Goal Difference", title="Prediction Error of Goals p/Match:\n Manchester City")
+	plot!(1:38, abs.(cl_2021[cl_2021.team .== "Manchester City", :].gf - man_city_pg_goals), width=2, label=false)
 end
 
 # ╔═╡ 0243ec16-ce9f-413b-97e7-6450f2b4f0aa
-mean(abs.(grp_2021[1].gf - grp_2021[1].Predicted_Goals))
+mean(abs.(cl_2021[cl_2021.team .== "Manchester City", :].gf - man_city_pg_goals))
 
-# ╔═╡ 03e9d80e-3716-4333-a8f8-1d07498aa09c
-grp_2021[1][:, [:team, :opponent, :gf, :Predicted_Goals]]
-
-# ╔═╡ b4672c9a-a515-4e45-9bf8-ec3ce3398aa8
-grp_2022[1].Predicted_Goals = prediction(grp_2022[1][:, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
-
-# ╔═╡ 988ae1a1-f106-45f4-84c0-9b48832b4b94
-begin
-	plot(xlabel="Match", ylabel="Goals", title="Prediction Error of Goals p/Match:\n Manchester City 2022 Season")
-	plot!(1:33, (grp_2022[1].gf - grp_2022[1].Predicted_Goals), width=2)
+# ╔═╡ f8ec06bf-cb3e-4e38-8cec-9b1946b1eda3
+struct team_preds
+	team::String
+	sub_league::DataFrame
+	results::Vector
+	model::DynamicPPL.Model
+	samples::MCMCChains.Chains
+	predictions::Vector
+	errors::Vector
+	error_rate::Float64
 end
 
-# ╔═╡ 76fd4305-d43f-4f7f-a30e-599294f9306f
-mean(abs.(grp_2022[1].gf - grp_2022[1].Predicted_Goals))
+# ╔═╡ 7e979950-6179-444b-9ff7-8623a7bb022a
+for t in unique(cl_2021.team)[1:20]
+	println(t)
+end
 
-# ╔═╡ 0e9f409f-2a4f-4c6a-a57c-e6ba75ae6b1e
-grp_2022[1][:, [:team, :opponent, :gf, :Predicted_Goals]]
+# ╔═╡ a20f7282-6bd3-48e6-8653-309f360c84ed
+cl_2021[cl_2021.team .== "Crystal Palace", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
+
+# ╔═╡ 63a44af5-ac89-42a4-bad1-f8258154240d
+function full_team_analysis(league; n=1, sample_size=1_000, num_chains=4)
+	p_league = []
+	#plot(xlabel="Game", ylabel="Error")
+	for t in unique(league.team)[1:n]
+		X = league[league.team .== t, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
+		y = league[league.team .== t, :gf]
+		team_m = team_model(X, y)
+		team_chain = sample(
+			team_m,
+			NUTS(),
+			MCMCThreads(), 
+			sample_size,
+			num_chains;
+			discard_adapt=false
+		);
+		team_pred = prediction(X, team_chain)
+		error = abs.(y .- team_pred)
+		error_rate = mean(error)
+		t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
+		push!(p_league, t_model)
+		println(t)
+		#plot!(1:38, error, label=t)
+	end
+	#plot!(title="Analysis")
+	return p_league
+end
+
+# ╔═╡ 65e99aca-ae3d-4616-bacd-b656a4eb0ab3
+fta = full_team_analysis(cl_2021; n=20)
+
+# ╔═╡ b4a473af-3c30-4423-9a58-439dcf9e48a0
+plot(fta[1:20].team, fta[1:20].error_rate)
+
+# ╔═╡ a04bbb71-107b-414b-a932-6faa2f9aa213
+fta[:].team
 
 # ╔═╡ d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
-spurs_model = team_model(grp_2021[4][:, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], grp_2021[4][:, :gf])
+spurs_model = team_model(
+	cl_2021[cl_2021.team .== "Tottenham Hotspur", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], cl_2021[cl_2021.team .== "Tottenham Hotspur", :gf]
+)
 
 # ╔═╡ 27077efc-fac2-46cc-ae26-0f611eeacb76
 spurs_chain = sample(
@@ -179,7 +215,7 @@ spurs_chain = sample(
 describe(spurs_chain)
 
 # ╔═╡ 1d43cf8f-0034-41d2-8a21-9b2e826fcd88
-grp_2021[4].Predicted_Goals = prediction(grp_2021[4][:, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
+spurs_pg_goals = prediction(cl_2021[cl_2021.team .== "Tottenham Hotspur", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
 
 # ╔═╡ 02f22268-b62e-4413-b6d0-a26d943ff1f4
 begin
@@ -230,7 +266,7 @@ TuringGLM = "~2.7.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.0"
+julia_version = "1.9.1"
 manifest_format = "2.0"
 project_hash = "e5c0b2d53a88e1722aa2dba24f158c45aa2e93e0"
 
@@ -2351,7 +2387,7 @@ version = "0.15.1+0"
 [[deps.libblastrampoline_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
-version = "5.7.0+0"
+version = "5.8.0+0"
 
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2407,13 +2443,10 @@ version = "1.4.1+0"
 # ╠═6f2a7d04-4317-45a1-9f3f-685fe9de3b2b
 # ╠═642aecab-6434-471e-bb18-85caa3fbb2ff
 # ╠═75758599-28e0-4fec-ab9f-7831cc89f59e
-# ╠═1d95bba3-4a39-4848-bd69-6bbf383f80b4
-# ╠═d1dd55ef-959a-4bc3-9da0-59059cfe1bae
-# ╠═066861d0-637f-4b44-b1c5-9eb0bb038275
 # ╠═cf3b2f08-f561-4374-90f0-b6fbfc52c9d7
-# ╠═875c9430-46e3-445a-963f-8fcf33fd184e
-# ╠═5ddb0661-a66a-4c6c-961a-9d1e710b914a
+# ╠═b93b8781-fb9f-467b-9bd7-362cc7a54657
 # ╠═df395f58-89ae-488c-bdcc-eb39ee4b8cbe
+# ╠═29b35fc4-05d7-4eb1-b5bd-0bb40f1cf29e
 # ╠═408ce1f5-85d5-4f9f-976d-2c16e90dc7c3
 # ╠═e415972d-5c83-4802-825c-23ffd19780f0
 # ╠═dd807b63-7b55-4b2e-a567-7bee5b0a3b70
@@ -2425,11 +2458,13 @@ version = "1.4.1+0"
 # ╠═8c190978-b505-44f0-9dda-b91b3e1f57e5
 # ╠═d38400aa-95f2-460c-9282-c31e5084cb09
 # ╠═0243ec16-ce9f-413b-97e7-6450f2b4f0aa
-# ╠═03e9d80e-3716-4333-a8f8-1d07498aa09c
-# ╠═b4672c9a-a515-4e45-9bf8-ec3ce3398aa8
-# ╠═988ae1a1-f106-45f4-84c0-9b48832b4b94
-# ╠═76fd4305-d43f-4f7f-a30e-599294f9306f
-# ╠═0e9f409f-2a4f-4c6a-a57c-e6ba75ae6b1e
+# ╠═f8ec06bf-cb3e-4e38-8cec-9b1946b1eda3
+# ╠═7e979950-6179-444b-9ff7-8623a7bb022a
+# ╠═a20f7282-6bd3-48e6-8653-309f360c84ed
+# ╠═63a44af5-ac89-42a4-bad1-f8258154240d
+# ╠═65e99aca-ae3d-4616-bacd-b656a4eb0ab3
+# ╠═b4a473af-3c30-4423-9a58-439dcf9e48a0
+# ╠═a04bbb71-107b-414b-a932-6faa2f9aa213
 # ╠═d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
 # ╠═27077efc-fac2-46cc-ae26-0f611eeacb76
 # ╠═0a2e7041-7b64-40ed-90a5-d9d57d0d06d5
