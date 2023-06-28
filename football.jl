@@ -171,7 +171,7 @@ function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_cha
 				num_chains;
 				discard_adapt=false
 			);
-			team_pred = prediction(X_pred, team_chain)
+			team_pred = prediction(X_pred, team_chain[500:end, :, :])
 			error = abs.(y_pred .- team_pred)
 			error_rate = mean(error)
 			t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
@@ -211,62 +211,29 @@ end
 # ╔═╡ ff908963-5487-4540-a2ac-3074a1a80c6c
 bar([fta[i].team for i in 1:5], [DataFrame(summarystats(fta[i].samples))[8, 2] for i in 1:5], xlabel = "Team", ylabel = "Home Field Advantage", title = "Comparision of Home Field Advantage over Teams", xtickfontsize=5, legend=false)
 
-# ╔═╡ cd8d3c3f-f457-43f8-aa1e-affdea6573ed
-DataFrame(fta[10].samples[:, 2])
-
 # ╔═╡ 1d767919-9d69-4841-94cd-f5bd330e1293
 fta[10].samples[:, :poss, 1]
 
 # ╔═╡ 7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
-histogram(fta[10].prediction)
-
-# ╔═╡ a04bbb71-107b-414b-a932-6faa2f9aa213
-_, _ = fta[1:2]
-
-# ╔═╡ 8c1be8e5-426f-4c70-9ecd-05a972ccabca
-[fta[i].error_rate for i in 1:20]
-
-# ╔═╡ d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
-spurs_model = team_model(
-	cl_2021[cl_2021.team .== "Tottenham Hotspur", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], cl_2021[cl_2021.team .== "Tottenham Hotspur", :gf]
-)
-
-# ╔═╡ 27077efc-fac2-46cc-ae26-0f611eeacb76
-spurs_chain = sample(
-	spurs_model,
-	NUTS(),
-	MCMCThreads(), 
-	sample_size,
-	num_chains;
-	discard_adapt=false
-)
-
-# ╔═╡ 0a2e7041-7b64-40ed-90a5-d9d57d0d06d5
-describe(spurs_chain)
-
-# ╔═╡ 1d43cf8f-0034-41d2-8a21-9b2e826fcd88
-spurs_pg_goals = prediction(cl_2021[cl_2021.team .== "Tottenham Hotspur", [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]], mc_chain[1_000:5_000, :, :])
-
-# ╔═╡ 02f22268-b62e-4413-b6d0-a26d943ff1f4
 begin
-	plot(xlabel="Match", ylabel="Goals", title="Prediction Error of Goals p/Match:\n Spurs")
-	plot!(1:38, (grp_2021[4].gf - grp_2021[4].Predicted_Goals), width=2)
+	histogram(fta[10].predictions, label=String(fta[10].team * ": Predicted"), xlabel="Goals Scored p/Game", ylabel="Frequency", alpha=0.5)
+	histogram!(fta[10].results, label=String(fta[10].team * ": Actual"), xlabel="Goals Scored p/Game", ylabel="Frequency", alpha=0.5)
 end
 
-# ╔═╡ 295c0ef6-8872-4ea8-8676-3702e87e4099
-mean(abs.(grp_2021[4].gf - grp_2021[4].Predicted_Goals))
+# ╔═╡ 8028836e-532e-4e30-b6c7-7227acd3fe70
+plot(fta[10].samples[500:end, :, :])
 
-# ╔═╡ a7adfd9f-1a68-4a71-a712-dc5511a2ce54
-grp_2021[4][:, [:team, :opponent, :gf, :Predicted_Goals]]
+# ╔═╡ 87bc4993-eb9a-4010-bb4b-8231ab9f1338
+cl_2021[(cl_2021.home_code .== 17 .&& cl_2021.opp_code .== 3) .|| (cl_2021.home_code .== 3 .&& cl_2021.opp_code .== 17), :]
 
-# ╔═╡ 77a80577-2588-43de-9b81-63d39f28ca41
-grp_2021[1][8, [:team, :opponent, :gf, :Predicted_Goals]]
+# ╔═╡ 71e13fe5-5cba-47c6-833d-eaff3d204fa4
 
-# ╔═╡ 2b343219-bf04-4438-af64-653b842f7c8a
-grp_2021[4][23, [:team, :opponent, :gf, :Predicted_Goals]]
 
-# ╔═╡ 050185f0-f656-49d9-abc0-408c6d52cbfe
-cl_2021[8, :]
+# ╔═╡ ebb1cfc6-0adf-46a5-9b32-196dca787674
+unique(cl_2021.team)
+
+# ╔═╡ bfc4557b-827c-47c5-845c-bcbb420a1a7c
+unique(cl_2021.opponent)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2498,20 +2465,12 @@ version = "1.4.1+0"
 # ╠═bd77158f-0787-4ef9-a3db-c46c439ab662
 # ╠═932cf027-8643-4e58-8c96-e6511ca0c707
 # ╠═ff908963-5487-4540-a2ac-3074a1a80c6c
-# ╠═cd8d3c3f-f457-43f8-aa1e-affdea6573ed
 # ╠═1d767919-9d69-4841-94cd-f5bd330e1293
 # ╠═7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
-# ╠═a04bbb71-107b-414b-a932-6faa2f9aa213
-# ╠═8c1be8e5-426f-4c70-9ecd-05a972ccabca
-# ╠═d13d8a92-1ef1-4b6f-8fb2-345e5df87cb9
-# ╠═27077efc-fac2-46cc-ae26-0f611eeacb76
-# ╠═0a2e7041-7b64-40ed-90a5-d9d57d0d06d5
-# ╠═1d43cf8f-0034-41d2-8a21-9b2e826fcd88
-# ╠═02f22268-b62e-4413-b6d0-a26d943ff1f4
-# ╠═295c0ef6-8872-4ea8-8676-3702e87e4099
-# ╠═a7adfd9f-1a68-4a71-a712-dc5511a2ce54
-# ╠═77a80577-2588-43de-9b81-63d39f28ca41
-# ╠═2b343219-bf04-4438-af64-653b842f7c8a
-# ╠═050185f0-f656-49d9-abc0-408c6d52cbfe
+# ╠═8028836e-532e-4e30-b6c7-7227acd3fe70
+# ╠═87bc4993-eb9a-4010-bb4b-8231ab9f1338
+# ╠═71e13fe5-5cba-47c6-833d-eaff3d204fa4
+# ╠═ebb1cfc6-0adf-46a5-9b32-196dca787674
+# ╠═bfc4557b-827c-47c5-845c-bcbb420a1a7c
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
