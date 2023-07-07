@@ -34,12 +34,6 @@ unique(data.season)
 # ╔═╡ 75758599-28e0-4fec-ab9f-7831cc89f59e
 cl = coalesce.(data[:, [:season, :round, :gf, :ga, :team, :opponent, :poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :home_code, :opp_code]], 0)
 
-# ╔═╡ b2f29028-6988-44ff-972e-c81b0632402d
-coalesce.(data[:, [:season, :round, :gf, :ga, :team, :opponent, :poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :home_code, :opp_code]], 0)
-
-# ╔═╡ 674d6dc1-375f-40d1-90c0-52fafe27d982
-
-
 # ╔═╡ cf3b2f08-f561-4374-90f0-b6fbfc52c9d7
 begin
 	plot(xlabel="Match", ylabel="Goals", title="Goals p/Match:\n Manchester City")
@@ -51,6 +45,9 @@ begin
 	cl_2021 = filter(:season => (s) -> s .== 2021, cl)
 	cl_2022 = filter(:season => (s) -> s .== 2022, cl)
 end
+
+# ╔═╡ 0db009d3-1128-48be-af98-f1af0f039815
+sort(unique(cl_2021.home_code))
 
 # ╔═╡ df395f58-89ae-488c-bdcc-eb39ee4b8cbe
 @model function team_model(X, y, ::Type{T} = Float64) where {T}
@@ -74,9 +71,6 @@ end
 	y ~ MvNormal(μ, σ * I)
 	return Nothing
 end
-
-# ╔═╡ 29b35fc4-05d7-4eb1-b5bd-0bb40f1cf29e
-
 
 # ╔═╡ 408ce1f5-85d5-4f9f-976d-2c16e90dc7c3
 begin
@@ -160,7 +154,6 @@ end
 # ╔═╡ 63a44af5-ac89-42a4-bad1-f8258154240d
 function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_chains=4)
 	p_league = []
-	#plot(xlabel="Game", ylabel="Error")
 	for t in unique(league.team)[1:n]
 		if t in league_pred.team
 			X = league[league.team .== t, [:poss, :sh, :sot, :dist, :fk, :pk, :venue_code, :opp_code]]
@@ -183,10 +176,8 @@ function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_cha
 			t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
 			push!(p_league, t_model)
 			println(t)
-			#plot!(1:38, error, label=t)
 		end
 	end
-	#plot!(title="Analysis")
 	return p_league
 end
 
@@ -226,40 +217,31 @@ end
 # ╔═╡ 8028836e-532e-4e30-b6c7-7227acd3fe70
 plot(fta[10].samples[500:end, :, :])
 
-# ╔═╡ 87bc4993-eb9a-4010-bb4b-8231ab9f1338
-cl_2021[(cl_2021.home_code .== 1 .&& cl_2021.opp_code .== 3) .|| (cl_2021.home_code .== 3 .&& cl_2021.opp_code .== 1), [:team, :opponent, :gf, :ga, :gf_pred]]
-
-# ╔═╡ 12de43dc-08d3-4db5-8a5e-cef3975b4f11
-test_vec = [2, 4, 6, 8]
-
-# ╔═╡ 2876ddf6-3b5e-4145-bdd5-334a1552d430
-test_vec[1:2]
-
 # ╔═╡ 71e13fe5-5cba-47c6-833d-eaff3d204fa4
 begin
 	cl_2021.ga_pred = zeros(size(cl_2021)[1])
-	for i ∈ 0:19
-		for j ∈ i:20
+	for i ∈ unique(cl_2021.home_code)
+		for j ∈ unique(cl_2021.opp_code)
 			if i ≠ j
 				duplicate_games = (cl_2021.home_code .== i .&& cl_2021.opp_code .== j) .|| (cl_2021.home_code .== j .&& cl_2021.opp_code .== i)
 				if any(duplicate_games)
-					#@show cl_2021[duplicate_games, :gf_pred]
-					ga_pred_ = cl_2021[duplicate_games, :gf_pred]
-					cl_2021[duplicate_games, :].ga_pred = ga_pred_
-					cl_2021[duplicate_games, :].ga_pred[1:2] = ga_pred_[3:4]
-					cl_2021[duplicate_games, :].ga_pred[3:4] = ga_pred_[1:2]
-					@show cl_2021[duplicate_games, :ga_pred]
+					cl_2021[duplicate_games, :ga_pred] =  cl_2021[duplicate_games, :gf_pred][[3, 4, 1, 2]]
 				end
 			end
 		end
 	end
 end
 
-# ╔═╡ 9839f107-2d6c-4b1b-ad23-a3afc18e8b30
-
+# ╔═╡ 1964c264-8d54-4098-80f5-ead26a889330
+cl_2021
 
 # ╔═╡ 2456d8c7-d7db-407f-b3c4-ae1beb3426b7
-function make_league_table(matches)
+function make_league_table(m; prediction=false)
+	matches = m
+	if prediction == true
+		matches.gf = matches.gf_pred
+		matches.ga = matches.ga_pred
+	end
 	league_table = DataFrame(
 		Position=[],
 		Club=[],
@@ -273,7 +255,7 @@ function make_league_table(matches)
 		Points=[]
 	)
 	position_ = 0
-	for team_ in unique(matches.team)
+	for team_ ∈ unique(matches.team)
 		position_ = position_ + 1
 		played_ = size(matches[matches.team .== team_, :])[1]
 		won_ = size(matches[matches.team .== team_ .&& matches.gf .> matches.ga, :])[1]
@@ -286,7 +268,7 @@ function make_league_table(matches)
 		table_line = [position_, team_, played_, won_, loss_, draw_, gf_, ga_, gd_, points_]
 		push!(league_table, table_line)
 	end
-	sort!(league_table, :Points, rev = true)
+	sort!(league_table, [:Points, :GD], rev = true)
 	league_table.Position = 1:size(league_table)[1]
 	return league_table
 end
@@ -294,17 +276,8 @@ end
 # ╔═╡ 839e2262-cfa6-4439-ae08-52c71d9aea18
 make_league_table(cl_2021)
 
-# ╔═╡ 71eadf2b-ba77-402d-a127-1464fae6de60
-cl_2021_preds = cl_2021;
-
-# ╔═╡ 144bd744-c925-4c67-b5a8-956d6c1140a9
-begin
-	cl_2021_preds.gf = cl_2021_preds.gf_pred
-	cl_2021_preds.ga = cl_2021_preds.ga_pred
-end;
-
 # ╔═╡ 0fe02cc0-597d-4dba-9794-b84033d17804
-make_league_table(cl_2021_preds)
+make_league_table(cl_2021; prediction=true)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -334,7 +307,7 @@ TuringGLM = "~2.7.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.1"
+julia_version = "1.9.2"
 manifest_format = "2.0"
 project_hash = "e5c0b2d53a88e1722aa2dba24f158c45aa2e93e0"
 
@@ -695,7 +668,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.2+0"
+version = "1.0.5+0"
 
 [[deps.CompositionsBase]]
 git-tree-sha1 = "802bb88cd69dfd1509f6670416bd4434015693ad"
@@ -1674,7 +1647,7 @@ version = "0.40.1+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.9.0"
+version = "1.9.2"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -2511,12 +2484,10 @@ version = "1.4.1+0"
 # ╠═6f2a7d04-4317-45a1-9f3f-685fe9de3b2b
 # ╠═642aecab-6434-471e-bb18-85caa3fbb2ff
 # ╠═75758599-28e0-4fec-ab9f-7831cc89f59e
-# ╠═b2f29028-6988-44ff-972e-c81b0632402d
-# ╠═674d6dc1-375f-40d1-90c0-52fafe27d982
+# ╠═0db009d3-1128-48be-af98-f1af0f039815
 # ╠═cf3b2f08-f561-4374-90f0-b6fbfc52c9d7
 # ╠═b93b8781-fb9f-467b-9bd7-362cc7a54657
 # ╠═df395f58-89ae-488c-bdcc-eb39ee4b8cbe
-# ╠═29b35fc4-05d7-4eb1-b5bd-0bb40f1cf29e
 # ╠═408ce1f5-85d5-4f9f-976d-2c16e90dc7c3
 # ╠═e415972d-5c83-4802-825c-23ffd19780f0
 # ╠═dd807b63-7b55-4b2e-a567-7bee5b0a3b70
@@ -2540,15 +2511,10 @@ version = "1.4.1+0"
 # ╠═1d767919-9d69-4841-94cd-f5bd330e1293
 # ╠═7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
 # ╠═8028836e-532e-4e30-b6c7-7227acd3fe70
-# ╠═87bc4993-eb9a-4010-bb4b-8231ab9f1338
-# ╠═12de43dc-08d3-4db5-8a5e-cef3975b4f11
-# ╠═2876ddf6-3b5e-4145-bdd5-334a1552d430
 # ╠═71e13fe5-5cba-47c6-833d-eaff3d204fa4
-# ╠═9839f107-2d6c-4b1b-ad23-a3afc18e8b30
+# ╠═1964c264-8d54-4098-80f5-ead26a889330
 # ╠═2456d8c7-d7db-407f-b3c4-ae1beb3426b7
 # ╠═839e2262-cfa6-4439-ae08-52c71d9aea18
-# ╠═71eadf2b-ba77-402d-a127-1464fae6de60
-# ╠═144bd744-c925-4c67-b5a8-956d6c1140a9
 # ╠═0fe02cc0-597d-4dba-9794-b84033d17804
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
