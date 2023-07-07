@@ -290,7 +290,99 @@ make_league_table(cl_2021)
 make_league_table(cl_2021; prediction=true)
 
 # ╔═╡ 59bb38ab-641a-410e-a9b0-d2323ff1cdeb
+fta[1].samples[:, :σ, :]
 
+# ╔═╡ 2a9a86c5-6004-483c-9fcc-79217e96805e
+matched_data_set = coalesce.(data[data.season .== 2021 .&& data.venue_code .== 0, [:round, :gf, :ga, :team, :opponent, :attendance, :formation, :captain, :home_code, :opp_code]], 0)
+
+# ╔═╡ 70ebfe74-70d2-4e90-8d95-fab4d2089bdc
+unique(matched_data_set.opponent)
+
+# ╔═╡ 7fc584e5-8322-401d-b074-570e60e00b48
+unique(matched_data_set.team)
+
+# ╔═╡ 5a06cde9-5acf-402d-9244-aab2ad813360
+@model function football_matches(home_teams, away_teams, score_home, score_away, teams)
+    # Hyper priors
+    σatt ~ Exponential(1)
+    σdef ~ Exponential(1)
+    μatt ~ Normal(0, 0.1)
+    μdef ~ Normal(0, 0.1)
+    
+    home ~ Normal(0, 1)
+        
+    # Team-specific effects 
+    att ~ filldist(Normal(μatt, σatt), length(teams))
+    def ~ filldist(Normal(μdef, σdef), length(teams))
+    
+    dict = Dict{Int64, Int64}()
+    for (i, team) in enumerate(teams)
+        dict[team] = i
+    end
+        
+    # Zero-sum constrains
+    offset = mean(att) + mean(def)
+    
+    log_θ_home = Vector{Real}(undef, length(home_teams))
+    log_θ_away = Vector{Real}(undef, length(home_teams))
+        
+    # Modeling score-rate and scores (as many as there were games in the league) 
+    for i in 1:length(home_teams)
+        # score-rate
+        log_θ_home[i] = home + att[dict[home_teams[i]]] + def[dict[away_teams[i]]] - offset
+        log_θ_away[i] = att[dict[away_teams[i]]] + def[dict[home_teams[i]]] - offset
+
+        # scores
+        score_home[i] ~ LogPoisson(log_θ_home[i])
+        score_away[i] ~ LogPoisson(log_θ_away[i])
+    end
+end
+
+# ╔═╡ 44635a3e-4c7a-467b-98c7-de3d0d29f67b
+league_model = football_matches(matched_data_set.home_code, matched_data_set.opp_code, matched_data_set.gf, matched_data_set.ga, unique(matched_data_set.home_code)
+)
+
+# ╔═╡ 04d8bf77-d701-49b0-b9f1-2ae2e278860f
+sample_football = sample(
+	league_model,
+	NUTS(),
+	MCMCThreads(), 
+	100,
+	1;
+	discard_adapt=false
+)
+
+# ╔═╡ e4dd4278-8780-4206-962b-208cc82b92c4
+begin
+	post_att = collect(get(sample_football[50:end, :, :], :att)[1])
+	post_def = collect(get(sample_football[50:end, :, :], :def)[1])
+	post_home = collect(get(sample_football[50:end, :, :], :home)[1])
+end;
+
+# ╔═╡ 78da1a89-1eb4-4d25-9b32-c64cb6e10896
+histogram(post_home)
+
+# ╔═╡ 67f63a55-821e-401d-bc41-33184001d926
+mean(post_home)
+
+# ╔═╡ bbdc0ecb-1130-4308-b1b0-02cb2af3bc93
+begin
+	teams_att = []
+	teams_def = []
+	for i in 1:length(post_att)
+	    push!(teams_att, post_att[i])
+	    push!(teams_def, post_def[i])
+	end
+end
+
+# ╔═╡ f2ef8e17-e0a2-40f0-9fc4-9ae4a46183bc
+histogram(teams_att[1])
+
+# ╔═╡ c5f80de1-ce8d-4a00-a46a-f6ca25146c6b
+mean(teams_att[1])
+
+# ╔═╡ e8495b66-5ba3-4305-b9aa-9da5fa0eb822
+mean(teams_def[1])
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2545,5 +2637,18 @@ version = "1.4.1+0"
 # ╠═839e2262-cfa6-4439-ae08-52c71d9aea18
 # ╠═0fe02cc0-597d-4dba-9794-b84033d17804
 # ╠═59bb38ab-641a-410e-a9b0-d2323ff1cdeb
+# ╠═2a9a86c5-6004-483c-9fcc-79217e96805e
+# ╠═70ebfe74-70d2-4e90-8d95-fab4d2089bdc
+# ╠═7fc584e5-8322-401d-b074-570e60e00b48
+# ╠═5a06cde9-5acf-402d-9244-aab2ad813360
+# ╠═44635a3e-4c7a-467b-98c7-de3d0d29f67b
+# ╠═04d8bf77-d701-49b0-b9f1-2ae2e278860f
+# ╠═e4dd4278-8780-4206-962b-208cc82b92c4
+# ╠═78da1a89-1eb4-4d25-9b32-c64cb6e10896
+# ╠═67f63a55-821e-401d-bc41-33184001d926
+# ╠═bbdc0ecb-1130-4308-b1b0-02cb2af3bc93
+# ╠═f2ef8e17-e0a2-40f0-9fc4-9ae4a46183bc
+# ╠═c5f80de1-ce8d-4a00-a46a-f6ca25146c6b
+# ╠═e8495b66-5ba3-4305-b9aa-9da5fa0eb822
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
