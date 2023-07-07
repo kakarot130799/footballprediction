@@ -15,6 +15,7 @@ begin
 	using StatsBase
 	using StatsPlots
 	using LinearAlgebra
+	using JLD2
 end
 
 # ╔═╡ 526e39a8-f0c1-11ed-0b69-7f78a9ede383
@@ -48,6 +49,17 @@ end
 
 # ╔═╡ 0db009d3-1128-48be-af98-f1af0f039815
 sort(unique(cl_2021.home_code))
+
+# ╔═╡ c8169656-86af-43e3-bc13-4406cf2454e7
+begin
+	team_code_mapping = DataFrame(unique(cl_2021[:, [:team]]))
+	team_code_mapping.index = 1:20
+	team_code_mapping.home_code = unique(cl_2021[:, :home_code])
+	jldsave("team_mapping.jld2"; team_code_mapping)
+end
+
+# ╔═╡ 205c62d7-f930-4306-9ca0-4b15b2697345
+team_code_mapping
 
 # ╔═╡ df395f58-89ae-488c-bdcc-eb39ee4b8cbe
 @model function team_model(X, y, ::Type{T} = Float64) where {T}
@@ -152,7 +164,7 @@ struct team_preds
 end
 
 # ╔═╡ 63a44af5-ac89-42a4-bad1-f8258154240d
-function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_chains=4)
+function full_team_analysis(league, league_pred; n=20, sample_size=5_000, num_chains=4)
 	p_league = []
 	for t in unique(league.team)[1:n]
 		if t in league_pred.team
@@ -170,7 +182,7 @@ function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_cha
 				num_chains;
 				discard_adapt=false
 			);
-			team_pred = prediction(X_pred, team_chain[500:end, :, :])
+			team_pred = prediction(X_pred, team_chain[Int(sample_size/2):end, :, :])
 			error = abs.(y_pred .- team_pred)
 			error_rate = mean(error)
 			t_model = team_preds(t, X, y, team_m, team_chain, team_pred, error, error_rate)
@@ -178,11 +190,12 @@ function full_team_analysis(league, league_pred; n=1, sample_size=1_000, num_cha
 			println(t)
 		end
 	end
+	jldsave("league_models.jld2"; p_league)
 	return p_league
 end
 
 # ╔═╡ 65e99aca-ae3d-4616-bacd-b656a4eb0ab3
-fta = full_team_analysis(cl_2021, cl_2021; n=20)
+fta = full_team_analysis(cl_2021, cl_2021)
 
 # ╔═╡ b4a473af-3c30-4423-9a58-439dcf9e48a0
 bar([fta[i].team for i in 1:20], [fta[i].error_rate for i in 1:20], xlabel = "Team", ylabel = "MAE", title = "Comparision of MAE over Teams", xtickfontsize=4, legend=false)
@@ -215,7 +228,7 @@ begin
 end
 
 # ╔═╡ 8028836e-532e-4e30-b6c7-7227acd3fe70
-plot(fta[10].samples[500:end, :, :])
+plot(fta[10].samples[1_000:end, :, :])
 
 # ╔═╡ 71e13fe5-5cba-47c6-833d-eaff3d204fa4
 begin
@@ -231,9 +244,6 @@ begin
 		end
 	end
 end
-
-# ╔═╡ 1964c264-8d54-4098-80f5-ead26a889330
-cl_2021
 
 # ╔═╡ 2456d8c7-d7db-407f-b3c4-ae1beb3426b7
 function make_league_table(m; prediction=false)
@@ -279,11 +289,15 @@ make_league_table(cl_2021)
 # ╔═╡ 0fe02cc0-597d-4dba-9794-b84033d17804
 make_league_table(cl_2021; prediction=true)
 
+# ╔═╡ 59bb38ab-641a-410e-a9b0-d2323ff1cdeb
+
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -295,6 +309,7 @@ TuringGLM = "0004c1f4-53c5-4d43-a221-a1dac6cf6b74"
 [compat]
 CSV = "~0.10.11"
 DataFrames = "~1.5.0"
+JLD2 = "~0.4.31"
 Plots = "~1.38.15"
 PlutoUI = "~0.7.51"
 StatsBase = "~0.33.21"
@@ -309,7 +324,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "e5c0b2d53a88e1722aa2dba24f158c45aa2e93e0"
+project_hash = "5da78912ddad43f85e0d94a4b24042eeb27841e8"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "dcfdf328328f2645531c4ddebf841228aef74130"
@@ -887,6 +902,12 @@ git-tree-sha1 = "0f478d8bad6f52573fb7658a263af61f3d96e43a"
 uuid = "442a2c76-b920-505d-bb47-c5924d526838"
 version = "0.5.1"
 
+[[deps.FileIO]]
+deps = ["Pkg", "Requires", "UUIDs"]
+git-tree-sha1 = "299dc33549f68299137e51e6d49a13b5b1da9673"
+uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+version = "1.16.1"
+
 [[deps.FilePathsBase]]
 deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
 git-tree-sha1 = "e27c4ebe80e8699540f2d6c805cc12203b614f12"
@@ -1126,6 +1147,12 @@ version = "1.8.0"
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
+
+[[deps.JLD2]]
+deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "Printf", "Reexport", "Requires", "TranscodingStreams", "UUIDs"]
+git-tree-sha1 = "42c17b18ced77ff0be65957a591d34f4ed57c631"
+uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+version = "0.4.31"
 
 [[deps.JLFzf]]
 deps = ["Pipe", "REPL", "Random", "fzf_jll"]
@@ -2485,6 +2512,8 @@ version = "1.4.1+0"
 # ╠═642aecab-6434-471e-bb18-85caa3fbb2ff
 # ╠═75758599-28e0-4fec-ab9f-7831cc89f59e
 # ╠═0db009d3-1128-48be-af98-f1af0f039815
+# ╠═c8169656-86af-43e3-bc13-4406cf2454e7
+# ╠═205c62d7-f930-4306-9ca0-4b15b2697345
 # ╠═cf3b2f08-f561-4374-90f0-b6fbfc52c9d7
 # ╠═b93b8781-fb9f-467b-9bd7-362cc7a54657
 # ╠═df395f58-89ae-488c-bdcc-eb39ee4b8cbe
@@ -2512,9 +2541,9 @@ version = "1.4.1+0"
 # ╠═7f3452c3-41aa-4f8e-93eb-4c7aa2fbf576
 # ╠═8028836e-532e-4e30-b6c7-7227acd3fe70
 # ╠═71e13fe5-5cba-47c6-833d-eaff3d204fa4
-# ╠═1964c264-8d54-4098-80f5-ead26a889330
 # ╠═2456d8c7-d7db-407f-b3c4-ae1beb3426b7
 # ╠═839e2262-cfa6-4439-ae08-52c71d9aea18
 # ╠═0fe02cc0-597d-4dba-9794-b84033d17804
+# ╠═59bb38ab-641a-410e-a9b0-d2323ff1cdeb
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
