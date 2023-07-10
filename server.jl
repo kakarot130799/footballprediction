@@ -18,8 +18,8 @@ function prediction(X, chain)
   return goals
 end;
 
-fta_ = load_object("league_models.jld2");
-team_mapping = load_object("team_mapping.jld2");
+fta_ = load_object("model-output/league_models.jld2");
+team_mapping = load_object("model-output/team_mapping.jld2");
 
 route("/", method = POST) do
   ht = jsonpayload()["home"]
