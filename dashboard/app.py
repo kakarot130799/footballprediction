@@ -15,7 +15,7 @@ hide_menu_style = """
 st.title("Football Analytics")
 
 teams = ["Arsenal", "Chelsea", "Liverpool"]
-url = "http://model-server:7979"
+url = "http://models:7979"
 
 league_tab, matches_tab, predictions_tab = st.tabs(["League", "Matches", "Predictions"])
 
@@ -39,5 +39,5 @@ with predictions_tab:
             }
     with st.spinner('Querying API...'):
         pred_output = requests.post(url, json = pred_request)
-    st.write(pred_output.text)
+    st.write(str(pred_output.text))
 

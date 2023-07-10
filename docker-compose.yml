@@ -8,5 +8,8 @@ services:
   dashboard:
     build:
       context: dashboard/
+    restart: on-failure
+    depends_on:
+      - models
     ports:
       - "8000:8000"
