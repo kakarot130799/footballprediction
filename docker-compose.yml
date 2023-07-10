@@ -5,3 +5,8 @@ services:
       context: model-server/
     ports:
       - "7979:7979"
+  dashboard:
+    build:
+      context: dashboard/
+    ports:
+      - "8000:8000"
