@@ -1,0 +1,7 @@
+version: "3.8"
+services:
+  models:
+    build:
+      context: model-server/
+    ports:
+      - "7979:7979"
