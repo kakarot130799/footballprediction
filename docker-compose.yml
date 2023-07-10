@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  models:
+    build:
+      context: model-server/
+    ports:
+      - "7979:7979"
+  dashboard:
+    build:
+      context: dashboard/
+    restart: on-failure
+    depends_on:
+      - models
+    ports:
+      - "8000:8000"
