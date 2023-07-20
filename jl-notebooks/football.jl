@@ -7,6 +7,7 @@ using InteractiveUtils
 # ╔═╡ 2efc8975-d3b8-429b-a761-722ecab55fb6
 begin
 	using Turing
+	using ForwardDiff
 	using PlutoUI
 	using Plots
 	using DataFrames
@@ -21,6 +22,9 @@ end
 md"""
 # Football Match Prediction with Julia
 """
+
+# ╔═╡ b7984740-3eda-45a7-af12-8f6ba3f99b05
+Turing.setadbackend(:forwarddiff)
 
 # ╔═╡ 87785fb8-2bf2-4111-9744-5078cbdcc922
 data = DataFrame(CSV.File("data/cleaned_data.csv"))
@@ -302,21 +306,24 @@ unique(matched_data_set.team)
 
 # ╔═╡ 1d73b557-404e-4ecc-bc51-4df300cb8e54
 function football_foo(teams)
-    dict = Dict{Int64, Int64}()
+    dict = Dict{String, Int64}()
     for (i, team) in enumerate(teams)
         dict[team] = i
     end
 	return dict
 end
 
-# ╔═╡ 3bc79c5d-2c6b-4d42-a71c-b76ff6d489cc
-football_foo(unique(matched_data_set.home_code))
-
 # ╔═╡ 52cfc027-d1e4-4dc7-9854-b014677519b8
+all_matches_ = DataFrame(CSV.File("data/premierleague.csv"));
 
+# ╔═╡ cd810c17-c2b6-45c8-927f-308a37b00889
+all_matches = all_matches_[:, [:home_team, :away_team, :goal_home_ft, :goal_away_ft]]
+
+# ╔═╡ 3bc79c5d-2c6b-4d42-a71c-b76ff6d489cc
+football_foo(unique(all_matches.home_team))
 
 # ╔═╡ 5a06cde9-5acf-402d-9244-aab2ad813360
-@model function football_matches(home_teams, away_teams, score_home, score_away, teams)
+@model function football_matches(home_teams, away_teams, score_home, score_away, teams, ::Type{T} = Float64) where {T}
     # Hyper priors
     z = zeros(length(teams))
 	σatt ~ Exponential(1)
@@ -325,12 +332,14 @@ football_foo(unique(matched_data_set.home_code))
     μdef ~ MvNormal(z, 0.1 * I)
     
     home ~ Normal(0, 1)
+	σ_home ~ truncated(Normal(0, 1); lower=0)
+	σ_away ~ truncated(Normal(0, 1); lower=0)
         
     # Team-specific effects 
     att ~ MvNormal(μatt, σatt * I)
     def ~ MvNormal(μdef, σdef * I)
     
-    dict = Dict{Int64, Int64}()
+    dict = Dict{String, Int64}()
     for (i, team) in enumerate(teams)
         dict[team] = i
     end
@@ -338,40 +347,46 @@ football_foo(unique(matched_data_set.home_code))
     # Zero-sum constrains
     offset = mean(att) + mean(def)
     
-    log_θ_home = Vector{Real}(undef, length(home_teams))
-    log_θ_away = Vector{Real}(undef, length(home_teams))
+    θ_home = Vector{Real}(undef, length(home_teams))
+    θ_away = Vector{Real}(undef, length(home_teams))
         
-    # Modeling score-rate and scores (as many as there were games in the league) 
+    # Modeling score-rate and scores (as many as there were games in the league)
     for i in 1:length(home_teams)
         # score-rate
-        log_θ_home[i] = home + att[dict[home_teams[i]]] + def[dict[away_teams[i]]] - offset
-        log_θ_away[i] = att[dict[away_teams[i]]] + def[dict[home_teams[i]]] - offset
+        θ_home[i] = home + att[dict[home_teams[i]]] + def[dict[away_teams[i]]] - offset
+        θ_away[i] = att[dict[away_teams[i]]] + def[dict[home_teams[i]]] - offset
+		
+		# scores
+        score_home[i] ~ LogPoisson(θ_home[i])
+        score_away[i] ~ LogPoisson(θ_away[i])
+	end
 
-        # scores
-        score_home[i] ~ LogPoisson(log_θ_home[i])
-        score_away[i] ~ LogPoisson(log_θ_away[i])
-    end
+	# scores
+	#score_home ~ MvNormal(θ_home, σ_home * I)
+	#score_away ~ MvNormal(θ_away, σ_away * I)
+
+	return Nothing
 end
 
 # ╔═╡ 44635a3e-4c7a-467b-98c7-de3d0d29f67b
-league_model = football_matches(matched_data_set.home_code, 		matched_data_set.opp_code, matched_data_set.gf, matched_data_set.ga, unique(matched_data_set.home_code)
+league_model = football_matches(all_matches.home_team, all_matches.away_team, all_matches.goal_home_ft, all_matches.goal_away_ft, unique(all_matches.home_team)
 )
 
 # ╔═╡ 04d8bf77-d701-49b0-b9f1-2ae2e278860f
 sample_football = sample(
 	league_model,
 	NUTS(),
-	MCMCThreads(), 
-	3_000,
+	MCMCThreads(),
+	1_000,
 	1;
 	discard_adapt=false
 )
 
 # ╔═╡ e4dd4278-8780-4206-962b-208cc82b92c4
 begin
-	post_att = collect(get(sample_football[50:end, :, :], :att)[1])
-	post_def = collect(get(sample_football[50:end, :, :], :def)[1])
-	post_home = collect(get(sample_football[50:end, :, :], :home)[1])
+	post_att = collect(get(sample_football[500:end, :, :], :att)[1])
+	post_def = collect(get(sample_football[500:end, :, :], :def)[1])
+	post_home = collect(get(sample_football[500:end, :, :], :home)[1])
 end;
 
 # ╔═╡ 78da1a89-1eb4-4d25-9b32-c64cb6e10896
@@ -399,20 +414,26 @@ mean(teams_att[1])
 # ╔═╡ e8495b66-5ba3-4305-b9aa-9da5fa0eb822
 mean(teams_def[1])
 
+# ╔═╡ 99d3f2b3-a119-434c-a99d-3926f3cac826
+DataFrame(sample_football)
+
+# ╔═╡ 1c16160a-f340-4598-9dd2-051977cc33ba
+jldsave("league_models_new.jld2"; sample_football)
+
 # ╔═╡ 4d46f54b-7da0-44bc-a860-020c7831f700
 function simulate_matches_(att₁, def₁, att₂, def₂, home, n_matches; home_team = 1, zipped=true)
-	home = mean(Array(home)[1_500:end])
-	att₁ = mean(Array(att₁)[1_500:end])
-	att₂ = mean(Array(att₂)[1_500:end])
-	def₁ = mean(Array(def₁)[1_500:end])
-	def₂ = mean(Array(def₂)[1_500:end])
+	home = mean(Array(home)[500:end])
+	att₁ = mean(Array(att₁)[500:end])
+	att₂ = mean(Array(att₂)[500:end])
+	def₁ = mean(Array(def₁)[500:end])
+	def₂ = mean(Array(def₂)[500:end])
     if home_team == 1
-        logθ₁ = home + att₁ + def₂
-        logθ₂ = att₂ + def₁
+        logθ₁ = (home + att₁ + def₂) #> 0.0
+        logθ₂ = (att₂ + def₁) #> 0.0
 
     elseif home_team == 2
-        logθ₁ = att₁ + def₂
-        logθ₂ = home + att₂ + def₁
+        logθ₁ = (att₁ + def₂) > 0.0
+        logθ₂ = (home + att₂ + def₁) > 0.0
     else
         return DomainError(home_team, "Invalid home_team value")
     end
@@ -442,7 +463,7 @@ function simulate_matches_(att₁, def₁, att₂, def₂, home, n_matches; home
 end
 
 # ╔═╡ 9c88a59c-917c-4083-87d7-eb853245bf83
-match_sim = simulate_matches_(teams_att[1], teams_def[1], teams_att[2], teams_def[2], post_home, 10_000_000; zipped=false)
+match_sim = simulate_matches_(teams_att[10], teams_def[10], teams_att[20], teams_def[20], post_home, 1_000_000; zipped=false)
 
 # ╔═╡ 10bbd922-bb34-4075-9801-803251fe4a45
 match_sim
@@ -497,6 +518,7 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
@@ -508,6 +530,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 [compat]
 CSV = "~0.10.11"
 DataFrames = "~1.5.0"
+ForwardDiff = "~0.10.35"
 JLD2 = "~0.4.31"
 Plots = "~1.38.15"
 PlutoUI = "~0.7.51"
@@ -522,7 +545,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "523c7b4905cd251b02d1ed6d4037dcb54e120c1f"
+project_hash = "32fd02da71ae3d44052fe0f7e434d53da94f42ec"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "dcfdf328328f2645531c4ddebf841228aef74130"
@@ -2506,6 +2529,7 @@ version = "1.4.1+0"
 # ╔═╡ Cell order:
 # ╟─526e39a8-f0c1-11ed-0b69-7f78a9ede383
 # ╠═2efc8975-d3b8-429b-a761-722ecab55fb6
+# ╠═b7984740-3eda-45a7-af12-8f6ba3f99b05
 # ╠═87785fb8-2bf2-4111-9744-5078cbdcc922
 # ╠═6f2a7d04-4317-45a1-9f3f-685fe9de3b2b
 # ╠═642aecab-6434-471e-bb18-85caa3fbb2ff
@@ -2550,6 +2574,7 @@ version = "1.4.1+0"
 # ╠═1d73b557-404e-4ecc-bc51-4df300cb8e54
 # ╠═3bc79c5d-2c6b-4d42-a71c-b76ff6d489cc
 # ╠═52cfc027-d1e4-4dc7-9854-b014677519b8
+# ╠═cd810c17-c2b6-45c8-927f-308a37b00889
 # ╠═5a06cde9-5acf-402d-9244-aab2ad813360
 # ╠═44635a3e-4c7a-467b-98c7-de3d0d29f67b
 # ╠═04d8bf77-d701-49b0-b9f1-2ae2e278860f
@@ -2560,6 +2585,8 @@ version = "1.4.1+0"
 # ╠═f2ef8e17-e0a2-40f0-9fc4-9ae4a46183bc
 # ╠═c5f80de1-ce8d-4a00-a46a-f6ca25146c6b
 # ╠═e8495b66-5ba3-4305-b9aa-9da5fa0eb822
+# ╠═99d3f2b3-a119-434c-a99d-3926f3cac826
+# ╠═1c16160a-f340-4598-9dd2-051977cc33ba
 # ╠═4d46f54b-7da0-44bc-a860-020c7831f700
 # ╠═9c88a59c-917c-4083-87d7-eb853245bf83
 # ╠═10bbd922-bb34-4075-9801-803251fe4a45
