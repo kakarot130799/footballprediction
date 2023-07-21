@@ -48,7 +48,7 @@ route("/", method = POST) do
   home_team::Int64 = team_mapping[ht]
   away_team::Int64 = team_mapping[at]
 
-  pred_game::DataFrame = simulate_matches(team_model, home_team, away_team, 10_000_000) 
+  pred_game::DataFrame = simulate_matches(team_model, home_team, away_team, 1_000_000) 
 
   home_win_percentage::Float64 = mean(pred_game.match_status .== 3)
   home_draw_percentage::Float64 = mean(pred_game.match_status .== 1)
