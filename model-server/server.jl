@@ -29,12 +29,12 @@ function simulate_matches(team_chain::DataFrame, h::Int64, a::Int64, n_matches::
       match_status[i] = 1
     end
   end
+
   df::DataFrame = DataFrame(
 		 "home_score" => scores₁,
 		 "away_score" => scores₂,
 		 "match_status" => match_status,
 		 )
-
   return df
 end
 
@@ -42,15 +42,31 @@ team_model::DataFrame = load_object("model-objects/league_model.jld2");
 team_mapping::Dict{String, Int64} = load_object("model-objects/team_mapping.jld2");
 
 route("/", method = POST) do
-  ht = jsonpayload()["home"]
-  at = jsonpayload()["away"]
+  ht::String = jsonpayload()["home"]
+  at::String = jsonpayload()["away"]
 
   home_team::Int64 = team_mapping[ht]
   away_team::Int64 = team_mapping[at]
 
-  pred_game::DataFrame = simulate_matches(team_model, home_team, away_team, 1_000_000) 
+  pred_game::DataFrame = simulate_matches(team_model, home_team, away_team, 10_000_000) 
 
-  json(Dict{String, Int64}("Home Goals"=>pred_game.home_score[1], "Away Goals"=>pred_game.away_score[1]))
+  home_win_percentage::Float64 = mean(pred_game.match_status .== 3)
+  home_draw_percentage::Float64 = mean(pred_game.match_status .== 1)
+  home_lose_percentage::Float64 = mean(pred_game.match_status .== 0)
+  home_win_by_2_percentage::Float64 = mean(pred_game.match_status .== 3 .&& (pred_game.home_score .- pred_game.away_score) .> 2)
+
+  json(Dict(
+	    "Home Goals" => pred_game.home_score[1], 
+	    "Away Goals" => pred_game.away_score[1],
+	    "Win" => home_win_percentage,
+	    "Draw" => home_draw_percentage,
+	    "Lose" => home_lose_percentage,
+	    "Win By at least 2" => home_win_by_2_percentage,
+	    "home_goals" => pred_game.home_score,
+	    "away_goals" => pred_game.away_score,
+	    "match_status" => pred_game.match_status,
+	    )
+       )
 end
 
 up(7979, "0.0.0.0", async=false)
