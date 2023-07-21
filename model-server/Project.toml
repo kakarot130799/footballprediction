@@ -2,4 +2,5 @@
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Genie = "c43c736e-a2d1-11e8-161f-af95117fbd1e"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
