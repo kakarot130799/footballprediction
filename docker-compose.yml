@@ -12,4 +12,4 @@ services:
     depends_on:
       - models
     ports:
-      - "8000:8000"
+      - "9000:9000"

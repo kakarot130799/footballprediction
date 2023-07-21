@@ -62,9 +62,9 @@ route("/", method = POST) do
 	    "Draw" => home_draw_percentage,
 	    "Lose" => home_lose_percentage,
 	    "Win By at least 2" => home_win_by_2_percentage,
-	    "home_goals" => pred_game.home_score,
-	    "away_goals" => pred_game.away_score,
-	    "match_status" => pred_game.match_status,
+	   # "home_goals" => pred_game.home_score,
+	   # "away_goals" => pred_game.away_score,
+	   # "match_status" => pred_game.match_status,
 	    )
        )
 end
